@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "name": "42",
+      "includePath": ["include"],
+      "defines": [],
+      "compilerPath": "/usr/bin/clang",
+      "cStandard": "gnu99",
+      "intelliSenseMode": "clang-x64",
+      "compilerArgs": ["-Wall -Wextra"]
+    }
+  ],
+  "version": 4
+}

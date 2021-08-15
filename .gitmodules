@@ -1,0 +1,3 @@
+[submodule "lib/libhashmap"]
+	path = lib/libhashmap
+	url = git@github.com:ClemaX/libhashmap
