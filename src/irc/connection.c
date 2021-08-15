@@ -100,6 +100,7 @@ irc_con *irc_con_new(SSL_CTX *const ssl_context)
 
 void irc_con_del(irc_con **const connection)
 {
+	hash_map_clr(&(*connection)->command_handlers);
 	free(*connection);
 	*connection = NULL;
 }
