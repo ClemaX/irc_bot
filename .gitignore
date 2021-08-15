@@ -3,6 +3,7 @@ ch0
 obj/
 *.out
 *.o
+*.a
 
 # macOS
 .DS_Store

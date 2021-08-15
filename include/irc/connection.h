@@ -7,6 +7,7 @@
 #include <irc/ircdef.h>
 #include <irc/handlers.h>
 #include <irc/buffer.h>
+#include <hash_map.h>
 
 typedef struct irc_con_s
 {
@@ -14,7 +15,7 @@ typedef struct irc_con_s
 	irc_buff read;
 	irc_buff write;
 	irc_handler_lst *handlers[IRC_RPL_MAX];
-	irc_handler_lst *msg_handlers;
+	hash_map *command_handlers;
 	struct addrinfo *server_address;
 	SSL *ssl;
 } irc_con;

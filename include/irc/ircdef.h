@@ -1,7 +1,11 @@
 #pragma once
 
 #define IRC_RPL_MAX 512U
+#define IRC_HANDLER_MAX 512U
 #define IRC_MESSAGE_MAXLEN 512U
+#define IRC_MESSAGE_DELIM ' '
+#define IRC_MESSAGE_PREFIX_PREFIX ':'
+#define IRC_MESSAGE_LAST_ARG_PREFIX ':'
 #define IRC_MESSAGE_SUFFIX "\r\n"
 
 /// Maximal simultaneous connections

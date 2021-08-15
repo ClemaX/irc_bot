@@ -8,5 +8,6 @@ SRCS = $(addprefix $(SRCDIR)/,\
 		buffer.c\
 		connection.c\
 		handlers.c\
+		message.c\
 	)\
 )

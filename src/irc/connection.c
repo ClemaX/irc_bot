@@ -12,6 +12,7 @@
 
 #include <irc/address.h>
 #include <irc/connection.h>
+#include <irc/message.h>
 
 #include <logger.h>
 
@@ -33,6 +34,7 @@ int irc_con_init(irc_con *const connection, SSL_CTX *const ssl_context)
 {
 	int err = 0;
 
+	debug("Initializing socket...\n");
 	bzero(connection, sizeof(*connection));
 	connection->fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 	if (connection->fd == -1)
@@ -42,9 +44,12 @@ int irc_con_init(irc_con *const connection, SSL_CTX *const ssl_context)
 	}
 	else
 	{
-		if (ssl_context != NULL)
+		connection->command_handlers = hash_map_new(IRC_HANDLER_MAX);
+		if (connection->command_handlers == NULL)
+			err = -3;
+		else if (ssl_context != NULL)
 		{
-			debug("Creating ssl instance...\n");
+			debug("Creating an ssl instance...\n");
 
 			connection->ssl = SSL_new(ssl_context);
 			if (connection->ssl != NULL)
@@ -72,6 +77,7 @@ void irc_con_destroy(irc_con *const connection)
 {
 	irc_close(connection);
 	irc_handler_clr(connection->handlers);
+	hash_map_clr(&connection->command_handlers);
 }
 
 irc_con *irc_con_new(SSL_CTX *const ssl_context)
@@ -169,8 +175,10 @@ void irc_handle_message(irc_con *connection)
 
 int irc_read(irc_con *connection)
 {
+	irc_msg message;
 	ssize_t ret;
 	size_t remaining;
+	char *end;
 
 	ret = 1;
 	remaining = 0;
@@ -200,8 +208,6 @@ int irc_read(irc_con *connection)
 
 		if (ret > 0)
 		{
-			// TODO: if (strstr(connection->read.buffer + connection->read.length, IRC_MESSAGE_SUFFIX))
-
 			connection->read.length += ret;
 			remaining -= ret;
 
@@ -209,6 +215,19 @@ int irc_read(irc_con *connection)
 
 			debug("Read %zd bytes from fd %d!\n", ret, connection->fd);
 			debug("Read buffer (%zu/%zu): '%s'\n", connection->read.length, connection->read.size, connection->read.buffer);
+
+			end = strstr(connection->read.buffer + connection->read.length - ret, IRC_MESSAGE_SUFFIX);
+			while (end != NULL)
+			{
+				*end = '\0';
+				debug("Found end! Message: '%s'\n", connection->read.buffer);
+				irc_msg_parse(&message, connection->read.buffer);
+				if (message.id != NULL)
+					irc_handler_dispatch(connection, &message);
+				debug("Message: prefix: '%s', id: '%s'\n", message.prefix, message.id);
+				irc_buff_rotate(&connection->read, end - connection->read.buffer + sizeof(IRC_MESSAGE_SUFFIX) - 1);
+				end = strstr(connection->read.buffer, IRC_MESSAGE_SUFFIX);
+			}
 		}
 		else if (ret == 0)
 			printf("Connection on fd %d has been closed by the host.\n", connection->fd);
