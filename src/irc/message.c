@@ -4,6 +4,8 @@
 
 #include <irc/message.h>
 
+#include <logger.h>
+
 const char **irc_message_split_arguments(char *data)
 {
 	char *const start = data;
@@ -21,7 +23,10 @@ const char **irc_message_split_arguments(char *data)
 			data++;
 		count++;
 		if (*data == IRC_MESSAGE_LAST_ARG_PREFIX)
+		{
+			count++;
 			break;
+		}
 	}
 
 	arguments = malloc(sizeof(*arguments) * (count + 1));
@@ -43,10 +48,13 @@ const char **irc_message_split_arguments(char *data)
 
 void irc_msg_parse(irc_msg *message, char *data)
 {
+	debug("Parsing message '%s'...\n", data);
 	if (*data == IRC_MESSAGE_PREFIX_PREFIX)
+	{
 		data++;
+		message->prefix = data;
+	}
 	// TODO: Maybe handle errors here
-	message->prefix = data;
 
 	while (*data != '\0' && *data != IRC_MESSAGE_DELIM)
 		data++;

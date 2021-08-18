@@ -45,17 +45,14 @@ int irc_buff_append(irc_buff *const buffer, const char *data)
 {
 	const size_t remaining = buffer->size == 0 ? 0 : buffer->size - buffer->length - 1;
 	const size_t data_length = strlen(data);
-	int ret;
+	int ret = 0;
 
-	ret = 0;
 	if (data_length > remaining)
-	{
 		ret = irc_buff_resize(buffer, buffer->size + data_length + 1 - remaining);
-		if (ret != -1)
-		{
-			strcpy(buffer->buffer + buffer->length, data);
-			buffer->length += data_length;
-		}
+	if (ret >= 0)
+	{
+		strcpy(buffer->buffer + buffer->length, data);
+		buffer->length += data_length;
 	}
 	return ret;
 }

@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <poll.h>
+#include <fcntl.h>
 #include <string.h>
 #include <errno.h>
 
@@ -30,9 +31,27 @@ SSL_CTX *irc_create_ssl_context()
 	return ctx;
 }
 
+int irc_con_init_ssl(irc_con *const connection, SSL_CTX *const ssl_context)
+{
+	int err;
+	debug("Creating an ssl instance...\n");
+
+	connection->ssl = SSL_new(ssl_context);
+	if (connection->ssl != NULL)
+		err = -(SSL_set_fd(connection->ssl, connection->fd) == 0);
+	else
+	{
+		close(connection->fd);
+		connection->fd = -1;
+		err = -2;
+	}
+	return err;
+}
+
 int irc_con_init(irc_con *const connection, SSL_CTX *const ssl_context)
 {
 	int err = 0;
+	int flags;
 
 	debug("Initializing socket...\n");
 	bzero(connection, sizeof(*connection));
@@ -44,22 +63,24 @@ int irc_con_init(irc_con *const connection, SSL_CTX *const ssl_context)
 	}
 	else
 	{
-		connection->command_handlers = hash_map_new(IRC_HANDLER_MAX);
-		if (connection->command_handlers == NULL)
-			err = -3;
-		else if (ssl_context != NULL)
+		flags = fcntl(connection->fd, F_GETFL);
+		if (flags == -1 || fcntl(connection->fd, F_SETFL, O_NONBLOCK) != 0)
 		{
-			debug("Creating an ssl instance...\n");
-
-			connection->ssl = SSL_new(ssl_context);
-			if (connection->ssl != NULL)
-				SSL_set_fd(connection->ssl, connection->fd);
-			else
-			{
-				close(connection->fd);
-				connection->fd = -1;
-				err = -2;
-			}
+			perror("fcntl");
+			err = -2;
+		}
+		else
+		{
+			connection->handlers = hash_map_new(IRC_HANDLER_MAX);
+			if (connection->handlers == NULL)
+				err = -3;
+			else if (ssl_context != NULL)
+				err = irc_con_init_ssl(connection, ssl_context);
+		}
+		if (err != 0)
+		{
+			close(connection->fd);
+			connection->fd = -1;
 		}
 	}
 
@@ -76,8 +97,7 @@ int irc_con_init(irc_con *const connection, SSL_CTX *const ssl_context)
 void irc_con_destroy(irc_con *const connection)
 {
 	irc_close(connection);
-	irc_handler_clr(connection->handlers);
-	hash_map_clr(&connection->command_handlers);
+	hash_map_clr(&connection->handlers, (void *(*)(void *)) & irc_handler_clr);
 }
 
 irc_con *irc_con_new(SSL_CTX *const ssl_context)
@@ -100,7 +120,7 @@ irc_con *irc_con_new(SSL_CTX *const ssl_context)
 
 void irc_con_del(irc_con **const connection)
 {
-	hash_map_clr(&(*connection)->command_handlers);
+	irc_con_destroy(*connection);
 	free(*connection);
 	*connection = NULL;
 }
@@ -115,7 +135,7 @@ int irc_connect(irc_con *const connection, const char *hostname, const char *ser
 	if (ret == 0)
 	{
 		ret = connect(connection->fd, connection->server_address->ai_addr, connection->server_address->ai_addrlen);
-		if (ret != 0)
+		if (ret != 0 && errno != EINPROGRESS)
 			perror("connect");
 		else if (connection->ssl != NULL && SSL_connect(connection->ssl) != 1)
 		{
@@ -152,6 +172,7 @@ void irc_close(irc_con *const connection)
 {
 	if (connection->fd != -1)
 	{
+		debug("Closing fd %d...\n", connection->fd);
 		if (close(connection->fd))
 			perror("close");
 
@@ -159,6 +180,8 @@ void irc_close(irc_con *const connection)
 	}
 	SSL_free(connection->ssl);
 	freeaddrinfo(connection->server_address);
+	irc_buff_clr(&connection->read);
+	irc_buff_clr(&connection->write);
 	connection->ssl = NULL;
 	connection->server_address = NULL;
 }
@@ -215,17 +238,16 @@ int irc_read(irc_con *connection)
 			connection->read.buffer[connection->read.length] = '\0';
 
 			debug("Read %zd bytes from fd %d!\n", ret, connection->fd);
-			debug("Read buffer (%zu/%zu): '%s'\n", connection->read.length, connection->read.size, connection->read.buffer);
 
 			end = strstr(connection->read.buffer + connection->read.length - ret, IRC_MESSAGE_SUFFIX);
 			while (end != NULL)
 			{
 				*end = '\0';
-				debug("Found end! Message: '%s'\n", connection->read.buffer);
 				irc_msg_parse(&message, connection->read.buffer);
 				if (message.id != NULL)
 					irc_handler_dispatch(connection, &message);
 				debug("Message: prefix: '%s', id: '%s'\n", message.prefix, message.id);
+				irc_msg_clr(&message);
 				irc_buff_rotate(&connection->read, end - connection->read.buffer + sizeof(IRC_MESSAGE_SUFFIX) - 1);
 				end = strstr(connection->read.buffer, IRC_MESSAGE_SUFFIX);
 			}
@@ -235,7 +257,7 @@ int irc_read(irc_con *connection)
 		else
 		{
 			if (errno == EWOULDBLOCK)
-				ret = connection->read.length;
+				ret = 1;
 			else
 				perror("recv");
 			break;
@@ -251,6 +273,8 @@ int irc_write(irc_con *connection)
 
 	ret = connection->write.length;
 
+	debug("Attempting to write %zd bytes...\n", ret);
+
 	while (ret > 0 && connection->write.length != 0)
 	{
 		if (connection->ssl != NULL)
@@ -259,10 +283,27 @@ int irc_write(irc_con *connection)
 			ret = send(connection->fd, connection->write.buffer, connection->write.length, 0);
 		debug("Sent %zd bytes on fd %d!\n", ret, connection->fd);
 		if (ret > 0)
+		{
+			debug("Sent '%.*s'\n", (int)ret, connection->write.buffer);
+
 			irc_buff_rotate(&connection->write, ret);
+		}
 	}
 
 	return ret;
+}
+
+void ping_handler(irc_con *const connection, const irc_msg *const message)
+{
+	irc_buff_append(&connection->write, "PONG ");
+	if (message->arguments && message->arguments[0])
+	{
+		debug("Sending PONG with argument %s...\n", message->arguments[0]);
+		irc_buff_append(&connection->write, message->arguments[0]);
+	}
+	else
+		debug("Sending PONG...\n");
+	irc_buff_append(&connection->write, IRC_MESSAGE_SUFFIX);
 }
 
 int irc_listen(irc_con *connections, unsigned count)
@@ -280,8 +321,11 @@ int irc_listen(irc_con *connections, unsigned count)
 	{
 		fds[i].fd = connections[i].fd;
 		fds[i].events = POLLIN;
+		irc_on(connections + i, "PING", &ping_handler);
+		debug("Write length: %zu\n", connections[i].write.length);
 		if (connections[i].write.length != 0)
-			fds[i].events |= POLLOUT;
+			fds[i]
+				.events |= POLLOUT;
 	}
 
 	while (count)
@@ -296,19 +340,26 @@ int irc_listen(irc_con *connections, unsigned count)
 				if ((fds[i].revents & POLLIN))
 				{
 					ret = irc_read(&connections[i]);
+					debug("irc_read: ret: %d\n", ret);
 					if (ret <= 0)
 					{
 						fds[i].fd = -1;
 						irc_close(&connections[i]);
 					}
-					else if (connections[i].write.length != 0)
+					if (connections[i].write.length != 0)
+					{
 						fds[i].events |= POLLOUT;
+					}
+					debug("Setting POLLOUT %s on fd %d!\n", fds[i].events & POLLOUT ? "on" : "off", fds[i].fd);
 				}
 				if (fds[i].revents & POLLOUT)
 				{
 					irc_write(&connections[i]);
 					if (connections[i].write.length == 0)
+					{
 						fds[i].events &= ~POLLOUT;
+					}
+					debug("Setting POLLOUT %s on fd %d!\n", fds[i].events & POLLOUT ? "on" : "off", fds[i].fd);
 				}
 				if (fds[i].revents & POLLHUP)
 				{

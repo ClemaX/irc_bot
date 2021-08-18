@@ -5,7 +5,7 @@
 #include <openssl/ssl.h>
 
 #include <irc/ircdef.h>
-#include <irc/handlers.h>
+#include <irc/handler.h>
 #include <irc/buffer.h>
 #include <hash_map.h>
 
@@ -14,8 +14,7 @@ typedef struct irc_con_s
 	int fd;
 	irc_buff read;
 	irc_buff write;
-	irc_handler_lst *handlers[IRC_RPL_MAX];
-	hash_map *command_handlers;
+	hash_map *handlers;
 	struct addrinfo *server_address;
 	SSL *ssl;
 } irc_con;

@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include <irc/connection.h>
-#include <irc/handlers.h>
+#include <irc/handler.h>
 
 #include <logger.h>
 
@@ -68,18 +68,13 @@ void irc_handler_del(irc_handler_lst **elem)
 	*elem = NULL;
 }
 
-int irc_on(irc_con *connection, irc_reply code, irc_handler handler)
+int irc_on(irc_con *connection, const char *command, irc_handler handler)
 {
-	return irc_handler_add(&connection->handlers[code], handler);
-}
-
-int irc_on_command(irc_con *connection, const char *command, irc_handler handler)
-{
-	map_pair *pair = hash_map_get(connection->command_handlers, command);
+	map_pair *pair = hash_map_get(connection->handlers, command);
 	int ret;
 
 	if (pair == NULL)
-		pair = hash_map_set(connection->command_handlers, command, NULL);
+		pair = hash_map_set(connection->handlers, command, NULL);
 	if (pair != NULL)
 		ret = irc_handler_add(((irc_handler_lst **)&pair->value), handler);
 	else
@@ -88,28 +83,9 @@ int irc_on_command(irc_con *connection, const char *command, irc_handler handler
 	return ret;
 }
 
-void irc_off(irc_con *connection, irc_reply code, irc_handler handler)
+void irc_off(irc_con *connection, const char *command, irc_handler handler)
 {
-	irc_handler_lst *curr = connection->handlers[code];
-	irc_handler_lst *prev = NULL;
-
-	while (curr != NULL && curr->handler != handler)
-	{
-		prev = curr;
-		curr = curr->next;
-	}
-
-	if (curr != NULL)
-	{
-		if (prev != NULL)
-			prev->next = curr->next;
-		free(curr);
-	}
-}
-
-void irc_off_command(irc_con *connection, const char *command, irc_handler handler)
-{
-	map_pair *const pair = hash_map_get(connection->command_handlers, command);
+	map_pair *const pair = hash_map_get(connection->handlers, command);
 	irc_handler_lst *curr;
 	irc_handler_lst *prev = NULL;
 
@@ -132,37 +108,21 @@ void irc_off_command(irc_con *connection, const char *command, irc_handler handl
 	}
 }
 
-void irc_handlers_init(irc_handler_lst *handlers[IRC_RPL_MAX])
+void irc_handler_clr(irc_handler_lst *lst)
 {
-	bzero(handlers, IRC_RPL_MAX);
-}
-
-void irc_handlers_clr(irc_handler_lst *handlers[IRC_RPL_MAX])
-{
-	for (unsigned i = 0; i < IRC_RPL_MAX; i++)
-	{
-		if (handlers[i] != NULL)
-			irc_handler_clr(&handlers[i]);
-	}
-}
-
-void irc_handler_clr(irc_handler_lst **lst)
-{
-	irc_handler_lst *next = *lst;
 	irc_handler_lst *curr;
 
-	*lst = NULL;
-	while (next)
+	while (lst)
 	{
-		curr = next;
-		next = curr->next;
+		curr = lst;
+		lst = lst->next;
 		free(curr);
 	}
 }
 
 void irc_handler_dispatch(irc_con *const connection, const irc_msg *const message)
 {
-	const map_pair *const pair = hash_map_get(connection->command_handlers, message->id);
+	const map_pair *const pair = hash_map_get(connection->handlers, message->id);
 	const irc_handler_lst *handler_lst;
 
 	if (pair != NULL)

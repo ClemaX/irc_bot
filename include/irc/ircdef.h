@@ -1,6 +1,5 @@
 #pragma once
 
-#define IRC_RPL_MAX 512U
 #define IRC_HANDLER_MAX 512U
 #define IRC_MESSAGE_MAXLEN 512U
 #define IRC_MESSAGE_DELIM ' '
