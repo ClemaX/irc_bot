@@ -1,5 +1,5 @@
 # C/CPP Binaries
-ch0
+tests
 obj/
 *.out
 *.o

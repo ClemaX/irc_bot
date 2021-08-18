@@ -1,8 +1,9 @@
-NAME = ch0
+NAME = libirc.a
 
 # Compiler and linker
 CC = clang
 LD = clang
+AR = ar
 
 # Paths
 include srcs.mk
@@ -21,19 +22,26 @@ LIBARS = $(notdir $(LIBS))
 
 # Sources
 INCS = $(LIBINCS) $(INCDIR)
-
 OBJS = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 DEPS = $(OBJS:.o=.d)
+
+# Tests
+TESTDIR = test
+TESTSRCS = $(addprefix $(TESTDIR)/, main.c)
+TESTOBJS = $(TESTSRCS:$(TESTDIR)/%.c=$(OBJDIR)/%.o)
+TESTDEPS = $(TESTOBJS:.o=.d)
 
 # Flags
 CFLAGS = -Wall -Wextra -Werror $(INCS:%=-I%)
 DFLAGS = -MT $@ -MMD -MP -MF $(OBJDIR)/$*.d
 LDFLAGS = $(LIBDIRS:%=-L%)
-LDLIBS = $(LIBARS:lib%.a=-l%) -lcrypto -lssl
+ARFLAGS = -rcTs
+LDLIBS = $(LIBARS:lib%.a=-l%)
 
 # Compiling commands
-COMPILE.c = $(CC) $(DFLAGS) $(CFLAGS) -c -g3 -fsanitize=address
-COMPILE.o = $(LD) $(LDFLAGS) -g3 -fsanitize=address
+COMPILE.c = $(CC) $(DFLAGS) $(CFLAGS) -c
+COMPILE.o = $(LD) $(LDFLAGS)
+ARCHIVE.o = $(AR) $(ARFLAGS)
 
 all: $(BINDIR)/$(NAME)
 
@@ -54,17 +62,33 @@ $(OBJS): $(OBJDIR)/%.o: $(SRCDIR)/%.c $(OBJDIR)/%.d | $(OBJDIR)
 
 # Dependencies
 $(DEPS): $(OBJDIR)/%.d:
--include $(wildcard $(DEPS))
+include $(wildcard $(DEPS))
+
+$(TESTDEPS): $(OBJDIR)/%.d:
+include $(wildcard $(TESTDEPS))
 
 # Binaries
 $(BINDIR)/$(NAME): $(OBJS) $(LIBS) | $(BINDIR)
-	@echo "LD $@"
-	$(COMPILE.o) $^ -o $@ $(LDLIBS)
+	@echo "AR $@"
 
-debug: CFLAGS += -DDEBUG
+	$(ARCHIVE.o) $@ $^
+
+# Tests
+$(TESTOBJS): $(OBJDIR)/%.o: $(TESTDIR)/%.c $(OBJDIR)/%.d | $(OBJDIR)
+	@mkdir -p '$(@D)'
+	@echo "CC $<"
+	$(COMPILE.c) $< -o $@
+
+tests: $(BINDIR)/$(NAME) $(TESTOBJS)
+	@echo "LD $^"
+	$(COMPILE.o) -L$(BINDIR) $(TESTOBJS) -o $@ -lm -lcrypto -lssl $(LDLIBS) -l$(<:lib%.a=%)
+
+test: tests
+	./tests
+
+debug: CFLAGS += -DDEBUG -g3 -fsanitize=address
+debug: LDFLAGS += -g3 -fsanitize=address
 debug: re
-
-# TODO: Replace make re with distribution folders
 
 clean:
 	$(foreach dir, $(LIBDIRS),\
