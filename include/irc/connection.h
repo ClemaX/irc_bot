@@ -30,7 +30,7 @@ void irc_con_del(irc_con **const connection);
 int irc_connect(irc_con *const connection, const char *hostname, const char *service);
 void irc_close(irc_con *const connection);
 
-void irc_authenticate(irc_con *const connection, const char *nickname, const char *username, const char *pass);
+void irc_authenticate(irc_con *const connection, const char *nickname, const char *username, const char *realname, const char *pass);
 
 int irc_read(irc_con *connection);
 int irc_write(irc_con *connection);

@@ -38,7 +38,12 @@ const char **irc_message_split_arguments(char *data)
 			arguments[i] = data;
 			while (*data != '\0')
 				data++;
-			data++;
+			if (i != count - 1)
+			{
+				data++;
+				while (*data == IRC_MESSAGE_DELIM || *data == IRC_MESSAGE_LAST_ARG_PREFIX)
+					data++;
+			}
 		}
 		arguments[count] = NULL;
 	}

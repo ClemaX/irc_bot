@@ -146,25 +146,26 @@ int irc_connect(irc_con *const connection, const char *hostname, const char *ser
 	return ret;
 }
 
-void irc_authenticate(irc_con *const connection, const char *nickname, const char *username, const char *pass)
+void irc_authenticate(irc_con *const connection, const char *nickname, const char *username, const char *realname, const char *pass)
 {
 	// TODO: Handle allocation errors
+
 	irc_buff_append(&connection->write, "NICK ");
 	irc_buff_append(&connection->write, nickname);
 	irc_buff_append(&connection->write, IRC_MESSAGE_SUFFIX);
 
 	irc_buff_append(&connection->write, "USER ");
 	irc_buff_append(&connection->write, username);
-	irc_buff_append(&connection->write, " laptop server :Clement Hamada");
+	irc_buff_append(&connection->write, " . . :");
+	irc_buff_append(&connection->write, realname);
 	irc_buff_append(&connection->write, IRC_MESSAGE_SUFFIX);
 
-	if (pass && *pass != '\0')
+	if (pass != NULL && *pass != '\0')
 	{
 		irc_buff_append(&connection->write, "PASS ");
 		irc_buff_append(&connection->write, pass);
 		irc_buff_append(&connection->write, IRC_MESSAGE_SUFFIX);
 	}
-
 	debug("Authenticate: write buffer: %s\n", connection->write.buffer);
 }
 
