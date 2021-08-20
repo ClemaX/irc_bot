@@ -2,7 +2,7 @@
   "configurations": [
     {
       "name": "42",
-      "includePath": ["include", "lib/libhashmap/include"],
+      "includePath": ["include", "lib/libhashmap/include", "lib/libbase64/include"],
       "defines": [],
       "compilerPath": "/usr/bin/clang",
       "cStandard": "gnu99",

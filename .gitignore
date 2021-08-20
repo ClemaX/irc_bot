@@ -1,9 +1,9 @@
 # C/CPP Binaries
-tests
 obj/
 *.out
 *.o
 *.a
+ch*
 
 # macOS
 .DS_Store
@@ -11,3 +11,4 @@ obj/
 # VSCode
 .vscode/settings.json
 !.vscode/c_cpp_properties.json
+compile_flags.txt

@@ -14,22 +14,54 @@ OBJDIR = obj
 BINDIR = .
 
 # Library dependencies
-LIBS = $(addprefix $(LIBDIR)/, libhashmap/libhashmap.a)
+LIBS = $(addprefix $(LIBDIR)/, libhashmap/libhashmap.a libbase64/libbase64.a)
 
-LIBDIRS = $(dir $(LIBS))
-LIBINCS = $(addsuffix $(INCDIR), $(LIBDIRS))
+LOCALLIBDIRS = $(dir $(LIBS))
+SYSLIBINCS =
+SYSLIBDIRS =
+LIBINCS = $(addsuffix $(INCDIR), $(LOCALLIBDIRS)) $(SYSLIBINCS)
+LIBDIRS = $(LOCALLIBDIRS) $(SYSLIBDIRS)
 LIBARS = $(notdir $(LIBS))
 
-# Sources
+# Include directories
+SYSINCS = /usr/include /usr/local/include
+
+ifeq ($(shell find -L $(SYSINCS) -maxdepth 1 -type d -name openssl -print -quit 2>/dev/null), )
+        BREW = $(shell dirname $(dir $(shell which brew)))
+
+        ifneq ($(BREW), )
+			USRINC = $(shell find -L $(BREW)/include -maxdepth 1 -type d -name openssl -print -quit)
+			USRLIB = $(shell find -L $(BREW)/lib -maxdepth 1 -type f -iname "libssl*" -print -quit)
+			ifeq ($(USRINC), )
+				USRINC = $(shell find -L $(BREW)/opt/openssl/include -maxdepth 1 -type d -name "openssl" -print -quit)
+				USRLIB = $(shell find -L $(BREW)/opt/openssl/lib -maxdepth 1 -type f -iname "libssl*")
+	    	endif
+		endif
+
+        ifeq ($(USRINC), )
+$(error Could not find OpenSSL headers!)
+        endif
+
+        ifeq ($(USRLIB), )
+$(error Could not find OpenSSL library!)
+        endif
+
+        SYSLIBINCS += $(dir $(USRINC))
+        SYSLIBDIRS += $(dir $(USRLIB))
+		LIBARS += libcrypto.a libssl.a
+endif
+
 INCS = $(LIBINCS) $(INCDIR)
+
+# Objects
 OBJS = $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 DEPS = $(OBJS:.o=.d)
 
 # Tests
-TESTDIR = test
-TESTSRCS = $(addprefix $(TESTDIR)/, main.c)
-TESTOBJS = $(TESTSRCS:$(TESTDIR)/%.c=$(OBJDIR)/%.o)
-TESTDEPS = $(TESTOBJS:.o=.d)
+BOTSRCDIR = test
+BOTSRCS = $(addprefix $(BOTSRCDIR)/, ch0.c ch1.c ch2.c ch3.c)
+BOTOBJS = $(BOTSRCS:$(BOTSRCDIR)/%.c=$(OBJDIR)/%.o)
+BOTDEPS = $(BOTOBJS:.o=.d)
 
 # Flags
 CFLAGS = -Wall -Wextra -Werror $(INCS:%=-I%)
@@ -55,6 +87,11 @@ $(LIBS): %.a: FORCE
 	make -C $(dir $@) NAME=$(@F)
 
 # Objects
+$(BOTOBJS): $(OBJDIR)/%.o: $(BOTSRCDIR)/%.c $(OBJDIR)/%.d | $(OBJDIR)
+	@mkdir -p '$(@D)'
+	@echo "CC $<"
+	$(COMPILE.c) $< -o $@
+
 $(OBJS): $(OBJDIR)/%.o: $(SRCDIR)/%.c $(OBJDIR)/%.d | $(OBJDIR)
 	@mkdir -p '$(@D)'
 	@echo "CC $<"
@@ -64,44 +101,58 @@ $(OBJS): $(OBJDIR)/%.o: $(SRCDIR)/%.c $(OBJDIR)/%.d | $(OBJDIR)
 $(DEPS): $(OBJDIR)/%.d:
 include $(wildcard $(DEPS))
 
-$(TESTDEPS): $(OBJDIR)/%.d:
-include $(wildcard $(TESTDEPS))
+$(BOTDEPS): $(OBJDIR)/%.d:
+include $(wildcard $(BOTDEPS))
 
-# Binaries
+# Library
 $(BINDIR)/$(NAME): $(OBJS) $(LIBS) | $(BINDIR)
 	@echo "AR $@"
 
 	$(ARCHIVE.o) $@ $^
 
-# Tests
-$(TESTOBJS): $(OBJDIR)/%.o: $(TESTDIR)/%.c $(OBJDIR)/%.d | $(OBJDIR)
-	@mkdir -p '$(@D)'
-	@echo "CC $<"
-	$(COMPILE.c) $< -o $@
+# Binaries
 
-tests: $(BINDIR)/$(NAME) $(TESTOBJS)
+ch0: BOTSRCS = $(addprefix $(BOTSRCDIR)/, ch0.c)
+ch0: $(BINDIR)/$(NAME) $(addprefix $(OBJDIR)/, ch0.o)
 	@echo "LD $^"
-	$(COMPILE.o) -L$(BINDIR) $(TESTOBJS) -o $@ -lm -lcrypto -lssl $(LDLIBS) -l$(<:lib%.a=%)
+	$(COMPILE.o) -L$(BINDIR) $(BOTOBJS) -o $@ -lm -lcrypto -lssl $(LDLIBS) -l$(<:lib%.a=%)
 
-test: tests
-	./tests
+ch1: BOTSRCS = $(addprefix $(BOTSRCDIR)/, ch1.c)
+ch1: $(BINDIR)/$(NAME) $(addprefix $(OBJDIR)/, ch1.o)
+	@echo "LD $^"
+	$(COMPILE.o) -L$(BINDIR) $(BOTOBJS) -o $@ -lm -lcrypto -lssl $(LDLIBS) -l$(<:lib%.a=%)
+
+ch2: BOTSRCS = $(addprefix $(BOTSRCDIR)/, ch2.c)
+ch2: $(BINDIR)/$(NAME) $(addprefix $(OBJDIR)/, ch2.o)
+	@echo "LD $^"
+	$(COMPILE.o) -L$(BINDIR) $(BOTOBJS) -o $@ -lm -lcrypto -lssl $(LDLIBS) -l$(<:lib%.a=%)
+
+ch3: BOTSRCS = $(addprefix $(BOTSRCDIR)/, ch3.c)
+ch3: $(BINDIR)/$(NAME) $(addprefix $(OBJDIR)/, ch3.o)
+	@echo "LD $^"
+	$(COMPILE.o) -L$(BINDIR) $(BOTOBJS) -o $@ -lm -lcrypto -lssl -lz $(LDLIBS) -l$(<:lib%.a=%)
 
 debug: CFLAGS += -DDEBUG -g3 -fsanitize=address
 debug: LDFLAGS += -g3 -fsanitize=address
 debug: re
 
 clean:
-	$(foreach dir, $(LIBDIRS),\
-		@echo "MK $(addprefix -C, $(LIBDIRS)) $@" && make -C $(dir) $@ && ):
-	@echo "RM $(OBJDIR)"
-	rm -rf "$(OBJDIR)"
+	$(foreach dir, $(LOCALLIBDIRS),\
+		echo "MK $(addprefix -C , $(dir)) $@" && make -C $(dir) $@ && ):
+	
+	rm -r "$(OBJDIR)" 2>/dev/null && @echo "RM $(OBJDIR)" || :;
 
 fclean: clean
-	$(foreach dir, $(LIBDIRS),\
-		@echo "MK $(addprefix -C, $(LIBDIRS)) $@" && make -C $(dir) $@ && ):
-	@echo "RM $(BINDIR)/$(NAME)"
-	rm -f "$(BINDIR)/$(NAME)"
+	$(foreach dir, $(LOCALLIBDIRS),\
+		echo "MK $(addprefix -C, $(dir)) $@" && make -C $(dir) $@ && ):
+
+	$(foreach bin, $(BINDIR)/$(NAME) ch0 ch1 ch2 ch3,\
+		rm "$(bin)" 2>/dev/null && echo "RM $(bin)"; ):
+
 	@rmdir "$(BINDIR)" 2>/dev/null && echo "RM $(BINDIR)" || :
+
+compile_flags.txt:
+	printf '%s\n' $(CFLAGS) > $@
 
 re: fclean all
 
