@@ -1,3 +1,6 @@
 [submodule "lib/libhashmap"]
 	path = lib/libhashmap
 	url = git@github.com:ClemaX/libhashmap
+[submodule "lib/libbase64"]
+	path = lib/libbase64
+	url = git@github.com:ClemaX/libbase64.git
